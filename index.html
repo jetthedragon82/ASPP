@@ -135,7 +135,6 @@ function resizeCanvas() {
     canvas.width = canvas.clientWidth * dpr;
     canvas.height = canvas.clientHeight * dpr;
 
-    // Reset and scale context cleanly
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw();
 }
@@ -147,6 +146,26 @@ function getSkipAngle(frequency) {
     const maximumAngle = 58;
     const normalized = frequency / 10000;
     return minimumAngle + (maximumAngle - minimumAngle) * Math.pow(normalized, 0.72);
+}
+
+/*
+    Calculates the exact Y height of the ionosphere curve 
+    at any given X position on the canvas.
+*/
+function getIonosphereYAtX(x, width, height) {
+    const startX = 50;
+    const endX = width - 50;
+    const baseIonosphereY = height * 0.28;
+    const controlY = baseIonosphereY - height * 0.20;
+
+    // Normalize X along the curve span
+    const t = (x - startX) / (endX - startX);
+    const clampedT = Math.max(0, Math.min(1, t));
+
+    // Standard quadratic curve height formula: (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+    return Math.pow(1 - clampedT, 2) * baseIonosphereY + 
+           2 * (1 - clampedT) * clampedT * controlY + 
+           Math.pow(clampedT, 2) * baseIonosphereY;
 }
 
 function draw() {
@@ -184,10 +203,18 @@ function draw() {
     ctx.lineTo(width, groundY);
     ctx.stroke();
 
-    /* Ionosphere */
+    /* Ionosphere Arc */
     const ionosphereY = height * 0.28;
     ctx.strokeStyle = "#3c5264";
     ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(50, ionosphereY);
+    ctx.quadraticCurveTo(width / 2, ionosphereY - height * 0.20, width - 50, ionosphereY);
+    ctx.stroke();
+
+    /* Ionosphere Glow */
+    ctx.strokeStyle = "rgba(80,150,190,0.12)";
+    ctx.lineWidth = 12;
     ctx.beginPath();
     ctx.moveTo(50, ionosphereY);
     ctx.quadraticCurveTo(width / 2, ionosphereY - height * 0.20, width - 50, ionosphereY);
@@ -214,20 +241,22 @@ function draw() {
     const angle = getSkipAngle(frequency);
     
     const startX = towerX;
-    const startY = groundY - 105; // Top of tower
+    const startY = groundY - 105;
 
-    // Target the center peak of the ionosphere arc dynamically
-    const targetY = ionosphereY - height * 0.08;
-    const deltaY = startY - targetY;
+    // Map frequency (0 - 10000) to a valid X-distance range on screen
+    // Ensures shallow 0 SVt angles stay visible on the right side of the curve
+    const minHitX = towerX + 80;
+    const maxHitX = width - 120;
+    const normalizedFreq = frequency / 10000;
     
-    // Calculate distance X based on skip angle
-    const angleRad = (angle * Math.PI) / 180;
-    const deltaX = deltaY / Math.tan(angleRad);
+    // Invert so high frequency/steep angle hits closer, low frequency hits further out
+    const ionosphereHitX = maxHitX - normalizedFreq * (maxHitX - minHitX);
+    
+    // Lock the Y position exactly to the arc at that X coordinate
+    const ionosphereHitY = getIonosphereYAtX(ionosphereHitX, width, height);
 
-    const ionosphereHitX = startX + deltaX;
-    const ionosphereHitY = targetY;
-
-    const returnX = ionosphereHitX + deltaX;
+    // Symmetric return path to ground
+    const returnX = Math.min(width - 20, ionosphereHitX + (ionosphereHitX - startX));
     const returnY = groundY;
 
     /* Signal Line */
@@ -294,6 +323,5 @@ slider.addEventListener("input", update);
 resizeCanvas();
 update();
 </script>
-
 </body>
 </html>

@@ -121,406 +121,178 @@
 </div>
 
 <script>
-
 const canvas = document.getElementById("skipCanvas");
 const ctx = canvas.getContext("2d");
 
 const slider = document.getElementById("frequencySlider");
-
-const frequencyDisplay =
-    document.getElementById("frequencyDisplay");
-
-const frequencyLarge =
-    document.getElementById("frequencyLarge");
-
-const angleDisplay =
-    document.getElementById("angleDisplay");
-
-const propagationDisplay =
-    document.getElementById("propagationDisplay");
-
+const frequencyDisplay = document.getElementById("frequencyDisplay");
+const frequencyLarge = document.getElementById("frequencyLarge");
+const angleDisplay = document.getElementById("angleDisplay");
+const propagationDisplay = document.getElementById("propagationDisplay");
 
 function resizeCanvas() {
-    canvas.width = canvas.clientWidth * window.devicePixelRatio;
-    canvas.height = canvas.clientHeight * window.devicePixelRatio;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = canvas.clientHeight * dpr;
 
-    ctx.setTransform(
-        window.devicePixelRatio,
-        0,
-        0,
-        window.devicePixelRatio,
-        0,
-        0
-    );
-
+    // Reset and scale context cleanly
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw();
 }
 
 window.addEventListener("resize", resizeCanvas);
 
-
-/*
-    SAS MODEL
-
-    Frequency does NOT scatter the signal.
-
-    Instead, increasing frequency changes
-    the angle at which the signal leaves
-    the transmitter and returns from the
-    ionosphere.
-
-    0 SVt     = shallow angle
-    10000 HVt = steep angle
-*/
-
 function getSkipAngle(frequency) {
-
     const minimumAngle = 8;
     const maximumAngle = 58;
-
     const normalized = frequency / 10000;
-
-    return minimumAngle +
-        (maximumAngle - minimumAngle) *
-        Math.pow(normalized, 0.72);
+    return minimumAngle + (maximumAngle - minimumAngle) * Math.pow(normalized, 0.72);
 }
-
-
-function getFrequencyUnit(value) {
-
-    if (value === 0) {
-        return "0 SVt";
-    }
-
-    if (value >= 5000) {
-        return value.toLocaleString() + " HVt";
-    }
-
-    return value.toLocaleString() + " SVt";
-}
-
 
 function draw() {
-
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
 
     ctx.clearRect(0, 0, width, height);
 
-    /*
-        Background
-    */
-
+    /* Background */
     ctx.fillStyle = "#070b10";
     ctx.fillRect(0, 0, width, height);
 
-
-    /*
-        Grid
-    */
-
+    /* Grid */
     ctx.strokeStyle = "rgba(120,150,180,0.08)";
     ctx.lineWidth = 1;
-
     for (let x = 0; x < width; x += 40) {
-
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
-
     }
-
     for (let y = 0; y < height; y += 40) {
-
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
-
     }
 
-
-    /*
-        Ground
-    */
-
+    /* Ground */
     const groundY = height * 0.82;
-
     ctx.strokeStyle = "#293642";
     ctx.lineWidth = 2;
-
     ctx.beginPath();
     ctx.moveTo(0, groundY);
     ctx.lineTo(width, groundY);
     ctx.stroke();
 
-
-    /*
-        Ionosphere
-    */
-
+    /* Ionosphere */
     const ionosphereY = height * 0.28;
-
     ctx.strokeStyle = "#3c5264";
     ctx.lineWidth = 3;
-
     ctx.beginPath();
-
     ctx.moveTo(50, ionosphereY);
-
-    ctx.quadraticCurveTo(
-        width / 2,
-        ionosphereY - height * 0.20,
-        width - 50,
-        ionosphereY
-    );
-
+    ctx.quadraticCurveTo(width / 2, ionosphereY - height * 0.20, width - 50, ionosphereY);
     ctx.stroke();
 
-
-    /*
-        Ionosphere glow
-    */
-
-    ctx.strokeStyle = "rgba(80,150,190,0.12)";
-    ctx.lineWidth = 12;
-
-    ctx.beginPath();
-
-    ctx.moveTo(50, ionosphereY);
-
-    ctx.quadraticCurveTo(
-        width / 2,
-        ionosphereY - height * 0.20,
-        width - 50,
-        ionosphereY
-    );
-
-    ctx.stroke();
-
-
-    /*
-        Tower
-    */
-
+    /* Tower */
     const towerX = width * 0.16;
-
     ctx.strokeStyle = "#9aa9b5";
     ctx.lineWidth = 3;
-
     ctx.beginPath();
-
     ctx.moveTo(towerX, groundY);
     ctx.lineTo(towerX, groundY - 105);
-
     ctx.moveTo(towerX - 18, groundY);
     ctx.lineTo(towerX, groundY - 105);
     ctx.lineTo(towerX + 18, groundY);
-
     ctx.moveTo(towerX - 12, groundY - 35);
     ctx.lineTo(towerX + 12, groundY - 35);
-
     ctx.moveTo(towerX - 8, groundY - 65);
     ctx.lineTo(towerX + 8, groundY - 65);
-
     ctx.stroke();
 
-
-    /*
-        Frequency
-    */
-
+    /* Dynamic Signal Calculations */
     const frequency = Number(slider.value);
-
     const angle = getSkipAngle(frequency);
-
-    const angleRadians = angle * Math.PI / 180;
-
-
-    /*
-        Signal geometry
-
-        Signal leaves tower at the
-        calculated skip angle.
-    */
-
+    
     const startX = towerX;
-    const startY = groundY - 100;
+    const startY = groundY - 105; // Top of tower
 
-    const ionosphereHitX =
-        startX +
-        Math.cos(angleRadians) * 230;
+    // Target the center peak of the ionosphere arc dynamically
+    const targetY = ionosphereY - height * 0.08;
+    const deltaY = startY - targetY;
+    
+    // Calculate distance X based on skip angle
+    const angleRad = (angle * Math.PI) / 180;
+    const deltaX = deltaY / Math.tan(angleRad);
 
-    const ionosphereHitY =
-        startY -
-        Math.sin(angleRadians) * 230;
+    const ionosphereHitX = startX + deltaX;
+    const ionosphereHitY = targetY;
 
-
-    /*
-        Find a ground return point.
-    */
-
-    const returnDistance =
-        220 + (frequency / 10000) * 270;
-
-    const returnX =
-        ionosphereHitX + returnDistance;
-
+    const returnX = ionosphereHitX + deltaX;
     const returnY = groundY;
 
-
-    /*
-        Signal line
-    */
-
+    /* Signal Line */
     ctx.strokeStyle = "#69d6ff";
     ctx.lineWidth = 3;
-
     ctx.shadowColor = "#42c8ff";
     ctx.shadowBlur = 12;
 
     ctx.beginPath();
-
     ctx.moveTo(startX, startY);
-
     ctx.lineTo(ionosphereHitX, ionosphereHitY);
-
     ctx.lineTo(returnX, returnY);
-
     ctx.stroke();
 
     ctx.shadowBlur = 0;
 
-
-    /*
-        Reflection point
-    */
-
+    /* Bounce Points */
     ctx.fillStyle = "#b8efff";
-
     ctx.beginPath();
-    ctx.arc(
-        ionosphereHitX,
-        ionosphereHitY,
-        5,
-        0,
-        Math.PI * 2
-    );
-
+    ctx.arc(ionosphereHitX, ionosphereHitY, 5, 0, Math.PI * 2);
     ctx.fill();
-
-
-    /*
-        Ground landing point
-    */
 
     ctx.fillStyle = "#69d6ff";
-
     ctx.beginPath();
-    ctx.arc(
-        returnX,
-        returnY,
-        5,
-        0,
-        Math.PI * 2
-    );
-
+    ctx.arc(returnX, returnY, 5, 0, Math.PI * 2);
     ctx.fill();
 
-
-    /*
-        Ionosphere label
-    */
-
+    /* Labels */
     ctx.fillStyle = "#657786";
     ctx.font = "12px monospace";
-
-    ctx.fillText(
-        "IONOSPHERE",
-        width / 2 - 40,
-        ionosphereY - height * 0.17
-    );
-
-
-    /*
-        Ground label
-    */
+    ctx.fillText("IONOSPHERE", width / 2 - 40, ionosphereY - height * 0.17);
 
     ctx.fillStyle = "#596873";
-
-    ctx.fillText(
-        "GROUND",
-        width - 85,
-        groundY + 25
-    );
-
-
-    /*
-        Tower label
-    */
+    ctx.fillText("GROUND", width - 85, groundY + 25);
 
     ctx.fillStyle = "#8b9aa6";
-
-    ctx.fillText(
-        "TX",
-        towerX - 8,
-        groundY + 25
-    );
-
+    ctx.fillText("TX", towerX - 8, groundY + 25);
 }
 
-
 function update() {
-
     const frequency = Number(slider.value);
-
     const angle = getSkipAngle(frequency);
-
-    const unit =
-        frequency >= 5000 ? "HVt" : "SVt";
-
-    const formatted =
-        frequency.toLocaleString() + " " + unit;
+    const unit = frequency >= 5000 ? "HVt" : "SVt";
+    const formatted = frequency.toLocaleString() + " " + unit;
 
     frequencyDisplay.textContent = formatted;
     frequencyLarge.textContent = formatted;
-
-    angleDisplay.textContent =
-        angle.toFixed(1) + "°";
-
+    angleDisplay.textContent = angle.toFixed(1) + "°";
 
     if (frequency < 2500) {
-
-        propagationDisplay.textContent =
-            "LOW FREQUENCY";
-
+        propagationDisplay.textContent = "LOW FREQUENCY";
     } else if (frequency < 5000) {
-
-        propagationDisplay.textContent =
-            "MODERATE SKIP";
-
+        propagationDisplay.textContent = "MODERATE SKIP";
     } else if (frequency < 7500) {
-
-        propagationDisplay.textContent =
-            "HIGH ANGLE";
-
+        propagationDisplay.textContent = "HIGH ANGLE";
     } else {
-
-        propagationDisplay.textContent =
-            "VERY HIGH FREQUENCY";
-
+        propagationDisplay.textContent = "VERY HIGH FREQUENCY";
     }
 
     draw();
 }
 
-
 slider.addEventListener("input", update);
-
 resizeCanvas();
 update();
-
 </script>
 
 </body>

@@ -142,18 +142,15 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 
 /*
-    ALGORITHM LOGIC:
-    - 0 to 1,000 SVt (0 - 10,000 Vt): Angle changes dynamically.
-    - At 10,000 Vt (1 HVt) and above: Angle locks permanently at maximum skip angle.
+    ANGLE LOGIC:
+    Calculates launch angle relative to the total scale length.
 */
-function getSkipAngle(freqVt) {
+function getSkipAngle(sliderVal) {
     const minAngle = 8;
-    const maxAngle = 58;
+    const maxAngle = 75; 
+    const normalized = sliderVal / 20000;
     
-    if (freqVt >= 10000) return maxAngle;
-
-    const normalized = freqVt / 10000;
-    return minAngle + (maxAngle - minAngle) * Math.pow(normalized, 0.72);
+    return minAngle + (maxAngle - minAngle) * Math.pow(normalized, 0.85);
 }
 
 function getIonosphereYAtX(x, width, height) {
@@ -207,6 +204,14 @@ function draw() {
     ctx.quadraticCurveTo(width / 2, ionosphereY - height * 0.20, width - 50, ionosphereY);
     ctx.stroke();
 
+    /* Ionosphere Glow */
+    ctx.strokeStyle = "rgba(80,150,190,0.12)";
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(50, ionosphereY);
+    ctx.quadraticCurveTo(width / 2, ionosphereY - height * 0.20, width - 50, ionosphereY);
+    ctx.stroke();
+
     /* Tower */
     const towerX = width * 0.16;
     ctx.strokeStyle = "#9aa9b5";
@@ -219,28 +224,21 @@ function draw() {
     ctx.lineTo(towerX + 18, groundY);
     ctx.stroke();
 
-    /*
-        BAND FREQUENCY INTERPRETATION
-        Slider value 0-10000 mapped into total HVt spectrum rules based on Band Plan.
-    */
+    /* Frequency & Angle Calculations */
     const sliderVal = Number(slider.value);
-    
-    // Scale slider range to allow mapping into the EAS spectrum (0 to 10,000 HVt)
-    const freqHVt = (sliderVal / 10000) * 10000; 
-    const freqVt = freqHVt * 10; 
+    const angle = getSkipAngle(sliderVal);
 
-    const angle = getSkipAngle(freqVt);
     const startX = towerX;
     const startY = groundY - 105;
 
-    // Reflection math
-    const maxHitX = width - 120;
-    const minHitX = towerX + 80;
-    const normAngleVal = Math.min(1, freqVt / 10000);
-    const ionosphereHitX = maxHitX - normAngleVal * (maxHitX - minHitX);
+    const maxHitX = width - 80;
+    const minHitX = towerX + 60;
+    const normAngleVal = (angle - 8) / (75 - 8); 
+    
+    const ionosphereHitX = minHitX + normAngleVal * (maxHitX - minHitX);
     const ionosphereHitY = getIonosphereYAtX(ionosphereHitX, width, height);
 
-    /* Main Beam Transmission */
+    /* Main Beam Transmission Line */
     ctx.strokeStyle = "#69d6ff";
     ctx.lineWidth = 3;
     ctx.shadowColor = "#42c8ff";
@@ -252,63 +250,69 @@ function draw() {
     ctx.stroke();
 
     /* 
-        PROPAGATION BEHAVIOR LOGIC
+        PROPAGATION BEHAVIOR MAP BY UNIT & BAND
     */
     
-    // AKrB Band (5000 HVt - 6250 HVt): Satellite Space Penetration
-    if (freqHVt >= 5000 && freqHVt <= 6250) {
+    // SVt Range (0 - 999 SVt): Always punctures through ionosphere
+    if (sliderVal < 1000) {
+        ctx.strokeStyle = "#ff4d4d"; 
+        ctx.beginPath();
+        ctx.moveTo(ionosphereHitX, ionosphereHitY);
+        ctx.lineTo(ionosphereHitX + (ionosphereHitX - startX) * 0.5, 0);
+        ctx.stroke();
+    }
+    // HVt AKrB Band (15000 - 16250): Space Satellite Link
+    else if (sliderVal >= 15000 && sliderVal <= 16250) {
         ctx.strokeStyle = "#00ffcc";
         ctx.beginPath();
         ctx.moveTo(ionosphereHitX, ionosphereHitY);
-        // Continues straight through the ionosphere into outer space
-        ctx.lineTo(ionosphereHitX + (ionosphereHitX - startX) * 0.8, 0);
+        ctx.lineTo(ionosphereHitX + (ionosphereHitX - startX) * 0.6, 0);
         ctx.stroke();
 
-        // Draw Satellite Icon
-        const satX = ionosphereHitX + 40;
-        const satY = 30;
+        const satX = ionosphereHitX + 30;
+        const satY = 25;
         ctx.fillStyle = "#00ffcc";
         ctx.fillRect(satX - 6, satY - 3, 12, 6);
         ctx.fillRect(satX - 15, satY - 1, 8, 2);
         ctx.fillRect(satX + 7, satY - 1, 8, 2);
     } 
-    // AVB / ASB / AXB Part 2 (1 HVt - 1250 HVt OR 3751 HVt - 4999 HVt): Penetration Mode
-    else if ((freqHVt >= 1 && freqHVt <= 1250) || (freqHVt >= 3751 && freqHVt < 5000)) {
+    // HVt AVB Band (10001 - 11250): Ionospheric Penetration / Leakage
+    else if (sliderVal >= 10001 && sliderVal <= 11250) {
         ctx.strokeStyle = "rgba(105, 214, 255, 0.4)";
         ctx.beginPath();
         ctx.moveTo(ionosphereHitX, ionosphereHitY);
-        ctx.lineTo(ionosphereHitX + 30, ionosphereHitY - 60);
+        ctx.lineTo(ionosphereHitX + 40, ionosphereHitY - 80);
         ctx.stroke();
     }
-    // ADB Band (2501 HVt - 3750 HVt): Directional Beaming
-    else if (freqHVt >= 2501 && freqHVt <= 3750) {
-        const returnX = ionosphereHitX + (ionosphereHitX - startX);
+    // HVt ADB Band (12501 - 13750): Directional Beam
+    else if (sliderVal >= 12501 && sliderVal <= 13750) {
+        const returnX = Math.min(width - 20, ionosphereHitX + (ionosphereHitX - startX) * 0.8);
         ctx.strokeStyle = "#ffb700";
-        ctx.lineWidth = 4; // Focused, tight beam
+        ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(ionosphereHitX, ionosphereHitY);
         ctx.lineTo(returnX, groundY);
         ctx.stroke();
     } 
-    // Splitting / Scatter Mode (Default for other bands: 1251 - 2500 HVt, 3751+ HVt)
+    // General Reflection & Scatter Mode (Vt range and remaining HVt bands)
     else {
-        const baseReturnX = ionosphereHitX + (ionosphereHitX - startX);
-        const scatters = [-40, 0, 40];
+        const baseReturnX = ionosphereHitX + (ionosphereHitX - startX) * 0.7;
+        const scatters = [-45, 0, 45];
         
         scatters.forEach(offset => {
             ctx.strokeStyle = "rgba(105, 214, 255, 0.6)";
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.moveTo(ionosphereHitX, ionosphereHitY);
-            ctx.lineTo(Math.min(width - 10, baseReturnX + offset), groundY);
+            ctx.lineTo(Math.min(width - 10, Math.max(10, baseReturnX + offset)), groundY);
             ctx.stroke();
         });
     }
 
     ctx.shadowBlur = 0;
 
-    /* Hit Point Marker */
-    ctx.fillStyle = "#b8efff";
+    /* Impact Point */
+    ctx.fillStyle = sliderVal < 1000 ? "#ff4d4d" : "#b8efff";
     ctx.beginPath();
     ctx.arc(ionosphereHitX, ionosphereHitY, 5, 0, Math.PI * 2);
     ctx.fill();
@@ -323,28 +327,41 @@ function draw() {
 
 function update() {
     const sliderVal = Number(slider.value);
-    
-    // Convert 0-10000 range into HVt/Vt band scales
-    const freqHVt = Math.round((sliderVal / 10000) * 10000);
-    const freqVt = freqHVt * 10;
-    
-    const angle = getSkipAngle(freqVt);
+    const angle = getSkipAngle(sliderVal);
 
-    frequencyDisplay.textContent = freqHVt.toLocaleString() + " HVt";
-    frequencyLarge.textContent = freqHVt.toLocaleString() + " HVt";
+    let unit = "SVt";
+    let displayVal = sliderVal;
+
+    // Unit Transition logic based on spectrum plans:
+    if (sliderVal < 1000) {
+        unit = "SVt";
+        displayVal = sliderVal;
+    } else if (sliderVal <= 10000) {
+        unit = "Vt";
+        displayVal = sliderVal - 999;
+    } else {
+        unit = "HVt";
+        displayVal = sliderVal - 10000;
+    }
+
+    const formatted = displayVal.toLocaleString() + " " + unit;
+
+    frequencyDisplay.textContent = formatted;
+    frequencyLarge.textContent = formatted;
     angleDisplay.textContent = angle.toFixed(1) + "°";
 
-    // Dynamic propagation mode readout based on band specs
-    if (freqHVt === 0) {
-        propagationDisplay.textContent = "VARIABLE ANGLE SKIP";
-    } else if (freqHVt >= 5000 && freqHVt <= 6250) {
-        propagationDisplay.textContent = "AKrB • SPACE/SATELLITE LINK";
-    } else if (freqHVt >= 2501 && freqHVt <= 3750) {
+    if (unit === "SVt") {
+        propagationDisplay.textContent = "SAS • SVt PUNCTURE";
+    } else if (unit === "Vt") {
+        propagationDisplay.textContent = "DAS • STANDARD PROPAGATION";
+    } else if (displayVal >= 5000 && displayVal <= 6250) {
+        propagationDisplay.textContent = "AKrB • SATELLITE SPACE LINK";
+    } else if (displayVal >= 2501 && displayVal <= 3750) {
         propagationDisplay.textContent = "ADB • DIRECTIONAL BEAM";
-    } else if ((freqHVt >= 1 && freqHVt <= 1250)) {
+    } else if (displayVal >= 1 && displayVal <= 1250) {
         propagationDisplay.textContent = "AVB • IONOSPHERIC PENETRATION";
     } else {
-        propagationDisplay.textContent = "SPLIT SCATTER REFLECTION";
+        propagationDisplay.textContent = "TAS/QAS • SPLIT SCATTER REFLECTION";
     }
 
     draw();
